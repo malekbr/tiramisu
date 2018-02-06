@@ -1619,6 +1619,26 @@ public:
       */
     expr substitute(std::vector<std::pair<var, expr>> substitutions);
 
+    expr apply_to_operands(std::function<expr(const expr &)> f) const
+    {
+        tiramisu::expr e{*this};
+        if (this->get_op_type() == o_access)
+        {
+            auto &access = this->get_access();
+            for (int i = 0; i < access.size(); i++) {
+                e.set_access_dimension(i, f(access[i]));
+            }
+
+        }
+        else
+        {
+            for (int i = 0; i < op.size(); i++) {
+                e.op[i] = f(e.op[i]);
+            }
+        }
+        return e;
+    }
+
     /** Create a variable that can be used that a dimension is unbounded.
       * i < tiramisu::expr::unbounded()
       * means that i does not have an upper bound.

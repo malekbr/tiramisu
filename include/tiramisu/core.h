@@ -22,6 +22,7 @@
 #include <tiramisu/debug.h>
 #include <tiramisu/expr.h>
 #include <tiramisu/type.h>
+#include "cuda_ast.h"
 
 namespace tiramisu
 {
@@ -52,6 +53,8 @@ HalideCodegenOutput halide_pipeline_to_tiramisu_function(
     const std::map<std::string, std::vector<int32_t>> &output_buffers_size,
     tiramisu::function *func);
 
+computation *get_computation_annotated_in_a_node(isl_ast_node *node);
+
 /**
   * A class to represent functions in Tiramisu. A function in Tiramisu is composed of
   * a set of computations (tiramisu::computation).
@@ -63,6 +66,7 @@ class function
     friend computation;
     friend constant;
     friend generator;
+    friend cuda_ast::generator;
 
 private:
     /**
@@ -601,7 +605,7 @@ protected:
        * allocate_and_map_buffer_automatically().
        */
      std::unordered_set<tiramisu::computation *> starting_computations;
- 
+
      /**
       * A boolean set to true if low level scheduling was used in the program.
       * If it is used, then high level scheduling commands such as .before(),
@@ -653,7 +657,7 @@ public:
 
     /**
       * \brief Compute the bounds of each computation.
-      * 
+      *
       * \details Computing the bounds of each computation means computing
       * the constraints over the iteration domains of each computation in
       * the function.
@@ -809,6 +813,8 @@ public:
       * Generate a Halide stmt that represents the function.
       */
     void gen_halide_stmt();
+
+    void gen_cuda_stmt();
 
     /**
       * Generate an isl AST that represents the function.
@@ -1144,6 +1150,7 @@ class computation
     friend buffer;
     friend constant;
     friend computation_tester;
+    friend cuda_ast::generator;
 
 private:
 
@@ -1511,6 +1518,7 @@ private:
       * buffer and location specified by the access function.
       */
     void create_halide_assignment();
+    std::pair<expr, expr> create_tiramisu_assignment();
 
     /**
       * Apply a duplication transformation from iteration space to
@@ -1529,7 +1537,7 @@ private:
       *
       */
     void create_duplication_transformation(std::string map_str);
-     
+
     /*
      * Create a new Tiramisu constant M = v*floor(N/v) and use it as
      * a separator.
@@ -2437,7 +2445,7 @@ public:
       *
       * \details This computation is placed after \p comp in the loop level \p level.
       * \p level is a loop level in this computation.
-      * 
+      *
       * The root level is computation::root.
       *
       * For example assuming we have the two computations
@@ -2503,7 +2511,7 @@ public:
     /*
      * \brief Allocate a buffer for the computation automatically.  The size of the buffer
      * is deduced automatically and a name is assigned to it automatically.
-     * 
+     *
      * \details Assuming the name of the computation is C, the name of the generated buffer
      * is _C_buffer.
      *
@@ -3443,6 +3451,7 @@ protected:
                                                      int coeff,
                                                      const tiramisu::function *fct);
 
+
     /**
       * Generate a Halide statement from an ISL ast node object in the ISL ast
       * tree.
@@ -3473,6 +3482,12 @@ protected:
             std::vector<isl_ast_expr *> &index_expr,
             const tiramisu::expr &tiramisu_expr);
 
+    static tiramisu::expr replace_accesses(const tiramisu::function * func, std::vector<isl_ast_expr *> &index_expr,
+                                           const tiramisu::expr &tiramisu_expr);
+    static std::string get_buffer_name(const tiramisu::computation *);
+    static tiramisu::expr comp_to_buffer(tiramisu::computation * comp, std::vector<isl_ast_expr *> &ie,
+                                                    const tiramisu::expr * expr = nullptr);
+
     /**
      * Linearize a multidimensional access to a Halide buffer.
      * Supposing that we have buf[N1][N2][N3], transform buf[i][j][k]
@@ -3485,6 +3500,8 @@ protected:
     static Halide::Expr linearize_access(int dims, const halide_dimension_t *shape, std::vector<tiramisu::expr> index_expr);
     static Halide::Expr linearize_access(int dims, std::vector<Halide::Expr> &strides, std::vector<tiramisu::expr> index_expr);
     static Halide::Expr linearize_access(int dims, std::vector<Halide::Expr> &strides, isl_ast_expr *index_expr);
+    static tiramisu::expr linearize_access(int dims, std::vector<tiramisu::expr> &strides, std::vector<tiramisu::expr> index_expr);
+    static tiramisu::expr linearize_access(int dims, std::vector<tiramisu::expr> &strides, isl_ast_expr *index_expr);
     //@}
 
     /**
