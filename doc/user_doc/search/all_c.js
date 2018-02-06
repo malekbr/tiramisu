@@ -1,0 +1,21 @@
+var searchData=
+[
+  ['p_5fboolean',['p_boolean',['../namespacetiramisu.html#adacb3196c1c6ddd14350580e70717354a866bff06572a4b8b009a7e46cb3a84b6',1,'tiramisu']]],
+  ['p_5ffloat32',['p_float32',['../namespacetiramisu.html#adacb3196c1c6ddd14350580e70717354a9eadc95c400c6390618fa1e6548c16e5',1,'tiramisu']]],
+  ['p_5ffloat64',['p_float64',['../namespacetiramisu.html#adacb3196c1c6ddd14350580e70717354a150345e7aebb75b819d00a9151e6bf7d',1,'tiramisu']]],
+  ['p_5fint16',['p_int16',['../namespacetiramisu.html#adacb3196c1c6ddd14350580e70717354a3c53f7ec92b611882a4d669d54f07378',1,'tiramisu']]],
+  ['p_5fint32',['p_int32',['../namespacetiramisu.html#adacb3196c1c6ddd14350580e70717354ae6ff62855f2a395bca4c64bfae55dc7b',1,'tiramisu']]],
+  ['p_5fint64',['p_int64',['../namespacetiramisu.html#adacb3196c1c6ddd14350580e70717354a63074c8b8f9159b7cd78d6d8a1da156a',1,'tiramisu']]],
+  ['p_5fint8',['p_int8',['../namespacetiramisu.html#adacb3196c1c6ddd14350580e70717354a49552dece35515d8f24e98ccdc5b912a',1,'tiramisu']]],
+  ['p_5fnone',['p_none',['../namespacetiramisu.html#adacb3196c1c6ddd14350580e70717354aa9870793edc9837e38548e540aa6a8fc',1,'tiramisu']]],
+  ['p_5fuint16',['p_uint16',['../namespacetiramisu.html#adacb3196c1c6ddd14350580e70717354a08ef1644bf105f720460524fccc2598e',1,'tiramisu']]],
+  ['p_5fuint32',['p_uint32',['../namespacetiramisu.html#adacb3196c1c6ddd14350580e70717354a7b1d8e8bc96e09292e30aff9726b26df',1,'tiramisu']]],
+  ['p_5fuint64',['p_uint64',['../namespacetiramisu.html#adacb3196c1c6ddd14350580e70717354a1d2d0a04827f6a19a73095ebb36d0ff6',1,'tiramisu']]],
+  ['p_5fuint8',['p_uint8',['../namespacetiramisu.html#adacb3196c1c6ddd14350580e70717354a30ef1bc35093eebdf14ea07eb4131c78',1,'tiramisu']]],
+  ['parallelize',['parallelize',['../classtiramisu_1_1computation.html#a0c748331b7a5d0c111c1bb24928ec771',1,'tiramisu::computation']]],
+  ['primitive_5ft',['primitive_t',['../namespacetiramisu.html#adacb3196c1c6ddd14350580e70717354',1,'tiramisu']]],
+  ['print',['print',['../classtiramisu__timer.html#a04bdff382d9f5742e6fb27da4b4a7be7',1,'tiramisu_timer']]],
+  ['print_5fbuffer',['print_buffer',['../utils_8h.html#a4f0632bb80c3e1b9273d36e32737aef2',1,'utils.h']]],
+  ['print_5ftest_5fresults',['print_test_results',['../utils_8h.html#a4dfe83bda30d910763d48ca86b23a054',1,'utils.h']]],
+  ['print_5ftime',['print_time',['../utils_8h.html#ab97fe5fe9f69cbd94dbee608f3e1efcf',1,'utils.h']]]
+];

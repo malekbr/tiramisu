@@ -1,0 +1,1 @@
+g++  -g -std=c++11 -Wall -Wno-sign-compare -fno-rtti -g -std=c++11 -Wall -Wno-sign-compare -fno-rtti   CMakeFiles/bench_halide_cvtcolor_generator.dir/benchmarks/halide/cvtcolor_ref.cpp.o  -o ../build/bench_halide_cvtcolor_generator ../Halide/lib/libHalide.a -lgmp -ldl -lpthread -lz -ljpeg -lrt -ldl -ltinfo -lpthread -lz -lm -lpng16 
