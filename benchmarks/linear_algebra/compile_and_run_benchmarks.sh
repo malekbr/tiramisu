@@ -17,8 +17,8 @@ else
 fi
 
 if [ $# -eq 0 ]; then
-      echo "Usage: TIRAMISU_SMALL=1 script.sh <KERNEL_FOLDER>"
-      echo "Example: script.sh axpy"
+      echo "Usage: TIRAMISU_SMALL=1 script.sh <KERNEL_FOLDER> <KERNEL_NAME_WITHOUT_EXTENSION>"
+      echo "Example: script.sh level1/axpy axpy"
       exit
 fi
 
@@ -34,10 +34,25 @@ else
     DEFINED_SIZE="-DTIRAMISU_XLARGE"
 fi
 
-KERNEL=$1
+KERNEL_FOLDER=$1
+KERNEL=$2
 source ${TIRAMISU_ROOT}/configure_paths.sh
 
-CXXFLAGS="-std=c++11 -O3"
+CXXFLAGS="-std=c++11 -O3 -fopenmp"
+
+# Compile options
+# - Make g++ dump generated assembly
+#   CXXFLAGS: -g -Wa,-alh
+# - Get info about g++ vectorization
+#   CXXFLAGS -fopt-info-vec
+# - Pass options to the llvm compiler
+#   HL_LLVM_ARGS="-help" 
+# - Set thread number for Halide
+#   HL_NUM_THREADS=32
+# Execution env variables
+#   OMP_NUM_THREADS=48
+#   to set the number of threads to use by OpenMP.
+
 
 INCLUDES="-I${MKL_PREFIX}/include/ -I${TIRAMISU_ROOT}/include/ -I${TIRAMISU_ROOT}/${HALIDE_SOURCE_DIRECTORY}/include/ -I${TIRAMISU_ROOT}/${ISL_INCLUDE_DIRECTORY} -I${TIRAMISU_ROOT}/benchmarks/"
 LIBRARIES="-ltiramisu ${MKL_FLAGS} -lHalide -lisl -lz -lpthread"
@@ -45,7 +60,7 @@ LIBRARIES_DIR="-L${MKL_PREFIX}/lib/${MKL_LIB_PATH_SUFFIX} -L${TIRAMISU_ROOT}/$HA
 
 echo "Compiling ${KERNEL}"
 
-cd ${KERNEL}
+cd ${KERNEL_FOLDER}
 
 rm -rf ${KERNEL}_generator ${KERNEL}_wrapper generated_${KERNEL}.o generated_${KERNEL}_halide.o
 
@@ -66,10 +81,11 @@ if [ $? -ne 0 ]; then
 fi
 
 echo "Compiling ${KERNEL} wrapper"
-g++ ${LANKA_OPTIONS} $CXXFLAGS ${INCLUDES} ${DEFINED_SIZE} ${KERNEL}_wrapper.cpp   ${LIBRARIES_DIR} ${LIBRARIES} generated_${KERNEL}.o ${LIBRARIES} -o ${KERNEL}_wrapper &>> log
+g++ ${LANKA_OPTIONS} $CXXFLAGS ${INCLUDES} ${DEFINED_SIZE} ${KERNEL}_wrapper.cpp   ${LIBRARIES_DIR} ${LIBRARIES} generated_${KERNEL}.o ${LIBRARIES} -o ${KERNEL}_wrapper
+#&>> log
 echo "Running ${KERNEL} wrapper"
 for ((i=0; i<1; i++)); do
-	RUN_MKL=1 RUN_TIRAMISU=1 LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${HALIDE_LIB_DIRECTORY}:${ISL_LIB_DIRECTORY}:${TIRAMISU_ROOT}/build/:${MKL_PREFIX}/lib/${MKL_LIB_PATH_SUFFIX} DYLD_LIBRARY_PATH=${DYLD_LIBRARY_PATH}:${HALIDE_LIB_DIRECTORY}:${TIRAMISU_ROOT}/build/:${MKL_PREFIX}/lib/${MKL_LIB_PATH_SUFFIX} perf stat -e cycles,instructions,cache-misses,L1-icache-load-misses,LLC-load-misses,dTLB-load-misses,cpu-migrations,context-switches,bus-cycles,cache-references,minor-faults ./${KERNEL}_wrapper
+	RUN_REF=1 RUN_TIRAMISU=1 LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${HALIDE_LIB_DIRECTORY}:${ISL_LIB_DIRECTORY}:${TIRAMISU_ROOT}/build/:${MKL_PREFIX}/lib/${MKL_LIB_PATH_SUFFIX} DYLD_LIBRARY_PATH=${DYLD_LIBRARY_PATH}:${HALIDE_LIB_DIRECTORY}:${TIRAMISU_ROOT}/build/:${MKL_PREFIX}/lib/${MKL_LIB_PATH_SUFFIX} perf stat -e cycles,instructions,cache-misses,L1-icache-load-misses,LLC-load-misses,dTLB-load-misses,cpu-migrations,context-switches,bus-cycles,cache-references,minor-faults ./${KERNEL}_wrapper
 done
 
 cd -
