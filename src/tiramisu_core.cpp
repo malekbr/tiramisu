@@ -3116,8 +3116,15 @@ void tiramisu::computation::after(computation &comp, tiramisu::var level)
 
     assert(level.get_name().length() > 0);
 
+    computation * actual_computation = this;
+    while (actual_computation->is_let_stmt())
+    {
+        actual_computation = static_cast<constant *>(actual_computation)->get_computation_with_whom_this_is_computed();
+        assert("scheduled global constant" && actual_computation != nullptr);
+    }
+
     std::vector<int> dimensions =
-	this->get_loop_level_numbers_from_dimension_names({level.get_name()});
+	actual_computation->get_loop_level_numbers_from_dimension_names({level.get_name()});
     
     assert(dimensions.size() == 1);
 

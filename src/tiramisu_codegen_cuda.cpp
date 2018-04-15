@@ -299,6 +299,7 @@ cuda_ast::statement_ptr tiramisu::cuda_ast::generator::cuda_stmt_from_isl_node(i
                     condition_statement,
                     incrementor_statement,
                     body_statement}};
+            iterator_to_kernel_map[iterator_name].push_back(kernel_ptr{});
         }
 
 
@@ -590,6 +591,8 @@ cuda_ast::statement_ptr tiramisu::cuda_ast::generator::cuda_stmt_from_isl_node(i
                 for (auto &statement: associated_lets)
                 {
                     this->m_scalar_data.insert(std::make_pair(statement.first, std::make_pair(statement.second.get_data_type(), memory_location::reg)));
+                    if (in_kernel)
+                        gpu_local.insert(statement.first);
                 }
                 if (index_exprs.find(comp) == index_exprs.end())
                     index_exprs[comp] = comp->index_expr;
