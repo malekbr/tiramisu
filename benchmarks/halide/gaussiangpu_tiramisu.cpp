@@ -37,26 +37,28 @@ int main(int argc, char **argv)
     constant NB{"NB", N - 5, it_type, true, nullptr, computation::root_dimension, &gaussian_tiramisu};
     constant MB{"MB", M - 5, it_type, true, nullptr, computation::root_dimension, &gaussian_tiramisu};
     constant C{"C", sizes(2), it_type, true, nullptr, computation::root_dimension, &gaussian_tiramisu};
-    computation gpu_input{"[N, M, C] -> {gpu_input[i, j, c]: 0 <= i < N and 0 <= j < M and 0 <= c < C}", expr(), false, data_type, &gaussian_tiramisu};
+    computation gpu_input{"[N, M, C] -> {gpu_input[i, o_i, j, c]: 0 <= i < N and 0 <= j < M and 0 <= c < C}", expr(), false, data_type, &gaussian_tiramisu};
     computation kernel_x{"{kernel_x[i]: 0 <= i < 5}", expr(), false, work_type, &gaussian_tiramisu};
     computation kernel_y{"{kernel_y[i]: 0 <= i < 5}", expr(), false, work_type, &gaussian_tiramisu};
 
     tiramisu::expr e = value_cast(work_type, 0);
     for (int k = 0; k < 5; k++)
-        e = e + cast(work_type, gpu_input(i + k, j, c)) * kernel_x(k);
-    computation gaussian_x{"[NB, MB, C] -> {gaussian_x[i, j, c]: 0 <= i < NB and 0 <= j < " EXTRA_J " and 0 <= c < C}", e, false, work_type, &gaussian_tiramisu};
-    gaussian_x.set_inline();
+        e = e + cast(work_type, gpu_input(i, k, j, c)) * kernel_x(k);
+    computation gaussian_x{"[NB, MB, C] -> {gaussian_x[i, j, c]: 0 <= i < NB and 0 <= j < MB + ceil(MB / 28) * 4 and 0 <= c < C}", e, true, work_type, &gaussian_tiramisu};
+    // gaussian_x.set_inline();
+    gaussian_x.tile(i, j, 32, 32, i0, j0, i1, j1);
+    computation gaussian_x_read{"[NB, MB, C] -> {gaussian_x_read[i, j, o_j, c]: 0 <= i < NB and 0 <= j < MB and 0 <= c < C}", expr{}, false, work_type, &gaussian_tiramisu};
 
     e = value_cast(work_type, 0);
     for (int k = 0; k < 5; k++)
-        e = e + gaussian_x(i, j + k, c) * kernel_y(k);
+        e = e + gaussian_x_read(i, j, k, c) * kernel_y(k);
     e = cast(data_type, e);
     computation gaussian_y{"[NB, MB, C] -> {gaussian_y[i, j, c]: 0 <= i < NB and 0 <= j < MB and 0 <= c < C}", e, true, data_type, &gaussian_tiramisu};
 
 
-    gaussian_y.tile(i, j, bs, bs, i0, j0, i1, j1);
+    gaussian_y.tile(i, j, 32, 28, i0, j0, i1, j1);
 
-    gaussian_y.tag_gpu_level(i0, j0, i1, j1);
+    gaussian_x.tag_gpu_level(i0, j0, i1, j1);
 
     buffer sizes_b{"sizes_b", {3}, it_type, a_input, &gaussian_tiramisu};
     buffer input{"input", {C, M, N}, data_type, a_input, &gaussian_tiramisu};
@@ -74,9 +76,23 @@ int main(int argc, char **argv)
 
     buffer gpu_in{"gpu_in", {C, M, N}, data_type, a_temporary, &gaussian_tiramisu};
     gpu_in.tag_gpu_global();
-    gpu_input.set_access("{gpu_input[i, j, c] -> gpu_in[c, j, i]}");
+    gpu_input.set_access("{gpu_input[i, o_i, j, c] -> gpu_in[c, j, i - 4 * floor(i / 32) + o_i]}");
     buffer gpu_out{"gpu_out", {C, MB, NB}, data_type, a_temporary, &gaussian_tiramisu};
+    buffer gaussian_x_gpu{"gaussian_x_gpu", {32, 32}, data_type, a_temporary, &gaussian_tiramisu};
     gpu_out.tag_gpu_global();
+    gaussian_x_gpu.tag_gpu_shared();
+
+    computation gaussian_x_dec{"[NB, MB, C] -> {gaussian_x_dec[i, j]: 0 <= i < NB and 0 <= j < MB + ceil(MB / 28) * 4}", allocate(gaussian_x_gpu), true, work_type, &gaussian_tiramisu};
+    gaussian_x_dec.tile(i, j, 32, 32, i0, j0, i1, j1);
+    gaussian_x_dec.tag_gpu_level(i0, j0, i1, j1);
+
+    gaussian_x_dec.before(gaussian_x, j1);
+    
+
+    gaussian_x.set_access("{gaussian_x[i, j, c] -> gaussian_x_gpu[i % 32, j % 32]}");
+    gaussian_x_read.set_access("{gaussian_x_read[i, j, o_j, c] -> gaussian_x_gpu[i % 32, j % 28 + o_j]}");
+
+    gaussian_x.before(gaussian_y, c);
 
     gaussian_y.set_access("{gaussian_y[i, j, c] -> gpu_out[c, j, i]}");
 
@@ -88,10 +104,18 @@ int main(int argc, char **argv)
     computation copy_kx{"{copy_kx[0]}", expr(o_memcpy, var(kxo.get_name()), var(kx.get_name())), true, p_none, &gaussian_tiramisu};
     computation copy_ky{"{copy_ky[0]}", expr(o_memcpy, var(kyo.get_name()), var(ky.get_name())), true, p_none, &gaussian_tiramisu};
     computation copy_to_out{"{copy_to_out[0]}", expr(o_memcpy, var(gpu_out.get_name()), var(output.get_name())), true, p_none, &gaussian_tiramisu};
+    computation synchronize1{"[NB, MB, C] -> {synchronize1[i, j, c]: 0 <= i < NB and 0 <= j < MB + ceil(MB / 28) * 4 and 0 <= c < C}", tiramisu::sync{}, true, p_none, &gaussian_tiramisu};
+    computation synchronize2{"[NB, MB, C] -> {synchronize2[i, j, c]: 0 <= i < NB and 0 <= j < MB + ceil(MB / 28) * 4 and 0 <= c < C}", tiramisu::sync{}, true, p_none, &gaussian_tiramisu};
 
     copy_kx.between(copy_to_gpu_in, computation::root, copy_ky, computation::root);
-    copy_ky.before(gaussian_y, computation::root);
+    copy_ky.before(gaussian_x_dec, computation::root);
     copy_to_out.after(gaussian_y, computation::root);
+
+    synchronize1.tile(i, j, 32, 32, i0, j0, i1, j1);
+    synchronize2.tile(i, j, 32, 32, i0, j0, i1, j1);
+
+    synchronize1.between(gaussian_x, c, gaussian_y, c);
+    synchronize2.between(gaussian_y, c, copy_to_out, computation::root);
 
 
     gaussian_tiramisu.set_arguments({&sizes_b, &input, &kxo, &kyo, &output});

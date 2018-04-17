@@ -6,12 +6,14 @@ using namespace Halide;
 #define kernelY_length 7
 
 int main(int argc, char* argv[]) {
-    ImageParam in(UInt(8), 3, "input");
+    ImageParam in_b(UInt(8), 3, "input");
     ImageParam kernelX(Float(32), 1, "kernelx");
     ImageParam kernelY(Float(32), 1, "kernely");
 
-    Func gaussiangpu("gaussiangpu"), gaussiangpu_x("gaussiangpu_x");
+    Func gaussiangpu("gaussiangpu"), gaussiangpu_x("gaussiangpu_x"), in;
     Var x("x"), y("y"), c("c");
+
+    in(x, y, c) = in_b(x, y, c);
 
     Expr e = 0.0f;
     for (int i = 0; i < 5; ++i) {
@@ -27,6 +29,8 @@ int main(int argc, char* argv[]) {
 
     // gaussiangpu_x.reorder(c, x, y);
     gaussiangpu.reorder(c, x, y);
+    in.reorder(c, x, y);
+    gaussiangpu_x.reorder(c, x, y);
 
      Var x_inner, y_inner, x_outer, y_outer, tile_index;
 // //    gaussiangpu.tile(x, y, x_outer, y_outer, x_inner, y_inner, 8, 8)
@@ -36,14 +40,16 @@ int main(int argc, char* argv[]) {
     // gaussiangpu_x.compute_root();
  
     // gaussiangpu_x.gpu_tile(x, y, x_inner, y_inner, x_outer, y_outer, 32, 32);
-    gaussiangpu.gpu_tile(x, y, x_inner, y_inner, x_outer, y_outer, 32, 32);
+    gaussiangpu.gpu_tile(x, y, x_inner, y_inner, x_outer, y_outer, 32, 28);
+    gaussiangpu_x.compute_at(gaussiangpu, x_inner);
+    gaussiangpu_x.gpu_threads(x, y);
 
     Halide::Target target = Halide::get_host_target();
     target.set_feature(Target::Feature::CUDA, true);
 
-    gaussiangpu.compile_to_object("build/generated_fct_gaussiangpu_ref.o", {in, kernelX, kernelY}, "gaussiangpu_ref", target);
+    gaussiangpu.compile_to_object("build/generated_fct_gaussiangpu_ref.o", {in_b, kernelX, kernelY}, "gaussiangpu_ref", target);
 
-    gaussiangpu.compile_to_lowered_stmt("build/generated_fct_gaussiangpu_ref.txt", {in, kernelX, kernelY}, Text, target);
+    gaussiangpu.compile_to_lowered_stmt("build/generated_fct_gaussiangpu_ref.txt", {in_b, kernelX, kernelY}, Text, target);
 
   return 0;
 }

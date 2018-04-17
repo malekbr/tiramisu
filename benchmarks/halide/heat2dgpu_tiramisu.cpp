@@ -48,13 +48,13 @@ int main(int argc, char **argv)
     computation out_init_i{"[N, M] -> {out_init_i[j, i]: 0 <= j < M and (i = 0 or i = M - 1)}", 0.f, true, data_type, &heat2d_tiramisu};
     computation out_init_j{"[N, M] -> {out_init_j[i, j]: 0 <= i < N and (j = 0 or j = N - 1)}", 0.f, true, data_type, &heat2d_tiramisu};
     expr comp_expr = shared_in(i, 0, j, 0) * alpha + (shared_in(i, 1, j, 0) + shared_in(i, 0, j, 1) + shared_in(i, -1, j, 0) + shared_in(i, 0, j, -1)) * beta;
-    computation out_comp{"[NB, MB] -> {out_comp[i, j]: 0 <= i < NB and 0 <= j < MB}", comp_expr, true, data_type, &heat2d_tiramisu};
+    computation out_comp{"[NB, MB] -> {out_comp[t, i, j]: 0 <= t < 20 and 0 <= i < NB and 0 <= j < MB}", comp_expr, true, data_type, &heat2d_tiramisu};
 
     buffer buff_shared{"buff_shared", {block_size, block_size}, data_type, a_temporary, &heat2d_tiramisu};
     buff_shared.tag_gpu_shared();
-    computation shared_dec{"[NB, MB] -> {shared_dec[i, j] : 0 <= i < NB + floor(NB / " BSS " + 1) * 2 and 0 <= j < MB + floor(MB / " BSS " + 1) * 2}",
+    computation shared_dec{"[NB, MB] -> {shared_dec[t, i, j] : 0 <= t < 20 and 0 <= i < NB + floor(NB / " BSS " + 1) * 2 and 0 <= j < MB + floor(MB / " BSS " + 1) * 2}",
                            expr(o_allocate, buff_shared.get_name()), true, p_none, &heat2d_tiramisu};
-    computation shared_init{"[NB, MB] -> {shared_init[i, j] : 0 <= i < NB + floor(NB / " BSS " + 1) * 2 and 0 <= j < MB + floor(MB / " BSS " + 1) * 2}",
+    computation shared_init{"[NB, MB] -> {shared_init[t, i, j] : 0 <= t < 20 and 0 <= i < NB + floor(NB / " BSS " + 1) * 2 and 0 <= j < MB + floor(MB / " BSS " + 1) * 2}",
                                    in(i, j),
                                    true, data_type, &heat2d_tiramisu};
 
@@ -68,7 +68,7 @@ int main(int argc, char **argv)
     buff_in_gpu.tag_gpu_global();
     // in.set_access("{in[i,j] -> buff_in_gpu[(i / " BS ") * " BSS " + i % " BS ", (j / " BS ") * " BSS " + j % " BS "]}");
     in.set_access("{in[i,j] -> buff_in_gpu[i - 2 * floor(i / " BS "), j - 2 * floor(j / " BS ")]}");
-    shared_init.set_access("{shared_init[i,j] -> buff_shared[i % " BS ", j % " BS "]}");
+    shared_init.set_access("{shared_init[t, i,j] -> buff_shared[i % " BS ", j % " BS "]}");
     shared_in.set_access("{shared_in[i, o_i, j, o_j] -> buff_shared[i % " BSS " + o_i + 1, j % " BSS " + o_j + 1]}");
     out_init_i.set_access("{out_init_i[j,i] -> buff_out_gpu[i,j]}");
     out_init_j.set_access("{out_init_j[i,j] -> buff_out_gpu[i,j]}");
@@ -78,14 +78,14 @@ int main(int argc, char **argv)
     buffer buff_out{"buff_out", {N, M}, data_type, a_output, &heat2d_tiramisu};
 
     sizes.set_access("{sizes[i] -> sizes_b[i]}");
-    out_comp.set_access("{out_comp[i,j] -> buff_out_gpu[i + 1,j + 1]}");
+    out_comp.set_access("{out_comp[t, i,j] -> buff_out_gpu[i + 1,j + 1]}");
 
     out_comp.tile(j, i, block_size_small, block_size_small, i0, j0, i1, j1);
     shared_dec.tile(j, i, block_size, block_size, i0, j0, i1, j1);
     shared_init.tile(j, i, block_size, block_size, i0, j0, i1, j1);
 
 
-    computation synchronize{"[MB, NB] -> {synchronize[i, j]: 0 <= i < NB + floor(NB / " BSS " + 1) * 2 and 0 <= j < MB + floor(MB / " BSS " + 1) * 2}", tiramisu::sync{}, true, p_none, &heat2d_tiramisu};
+    computation synchronize{"[MB, NB] -> {synchronize[t, i, j]: 0 <= t < 20 and 0 <= i < NB + floor(NB / " BSS " + 1) * 2 and 0 <= j < MB + floor(MB / " BSS " + 1) * 2}", tiramisu::sync{}, true, p_none, &heat2d_tiramisu};
     synchronize.interchange(i, j);
     synchronize.tile(j, i, block_size, block_size, i0, j0, i1, j1);
 

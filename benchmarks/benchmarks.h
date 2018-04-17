@@ -10,7 +10,7 @@
 
 
 #define NB_TESTS 60
-#define CHECK_CORRECTNESS 1
+#define CHECK_CORRECTNESS 0
 #define PRINT_OUTPUT 0 
 #define SIZE_IS_MULTIPLE_OF_TILE 1
 

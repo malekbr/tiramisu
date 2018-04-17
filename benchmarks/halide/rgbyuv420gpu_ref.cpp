@@ -16,11 +16,16 @@ int main(int argc, char **argv) {
     //u_part.compute_with(y_part, y);
     //v_part.compute_with(u_part, y);
     y_part.gpu_tile(x, y, x1, y1, 16, 16);
-    u_part.gpu_tile(x, y, x1, y1, 16, 16);
-    v_part.gpu_tile(x, y, x1, y1, 16, 16);
+    u_part.tile(x, y, x0, y0, x1, y1, 16, 16);
+    v_part.tile(x, y, x0, y0, x1, y1, 16, 16);
     y_part.compute_root();
     u_part.compute_root();
     v_part.compute_root();
+    v_part.compute_with(u_part, x1, LoopAlignStrategy::AlignStart);
+    u_part.gpu_blocks(x0, y0);
+    u_part.gpu_threads(x1, y1);
+    v_part.gpu_blocks(x0, y0);
+    v_part.gpu_threads(x1, y1);
 
     Halide::Target target = Halide::get_host_target();
     target.set_feature(Target::Feature::CUDA, true);

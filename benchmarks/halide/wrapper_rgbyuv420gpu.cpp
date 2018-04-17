@@ -58,11 +58,18 @@ int main(int, char**)
         duration_vector_1.push_back(duration1);
     }
 
+    for (auto &d: duration_vector_1)
+        std::cout << "," << d.count();
+    std::cout << std::endl;
+
     // Reference
     for (int i=0; i<NB_TESTS; i++)
     {
         duration_vector_2.push_back(run_halide(input, output_ref_y, output_ref_u, output_ref_v));
     }
+    for (auto &d: duration_vector_2)
+        std::cout << "," << d.count();
+    std::cout << std::endl;
 
     print_time("performance_CPU.csv", "rgbyuv420gpu",
                {"Tiramisu", "Halide"},

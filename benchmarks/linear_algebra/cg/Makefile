@@ -107,7 +107,8 @@ OMP_FLAGS = -fopenmp
 #
 # 7) System libraries: (May need to add -lg2c before -lm)
 
-SYS_LIB =-lm -L ../../../Halide/lib/ -lHalide -lz -lpthread -ldl
+SYS_LIB =-lm -L ../../../Halide/lib/ -lHalide -lz -lpthread -ldl -ltinfo
+STATIC_LIB =-L ../../../build/ -lcuda_wrapper -L/usr/local/cuda-9.1/lib64/ -lcudart
 
 #
 # 6) Specify name if executable (optional):
@@ -130,7 +131,7 @@ TEST_CPP = main.cpp generate_matrix.cpp \
 TEST_OBJ          = $(TEST_CPP:.cpp=.o)
 
 $(TARGET): $(TEST_OBJ)
-	$(LINKER) $(CPP_OPT_FLAGS) $(OMP_FLAGS) $(TEST_OBJ) $(LIB_PATHS) ../blas/level1/dot/generated_dot.o generated_cg.o ../blas/level1/waxpby/generated_waxpby.o ../sparse_blas/spmv/generated_spmv.o -o $(TARGET)
+	$(LINKER) $(CPP_OPT_FLAGS) $(OMP_FLAGS) $(TEST_OBJ) $(LIB_PATHS) ./generated_cg.o_gpu.o ./generated_cg.o_cpu.o ../blas/level1/dot/generated_dot.o generated_cg.o ../blas/level1/waxpby/generated_waxpby.o ../sparse_blas/spmv/generated_spmv.o $(STATIC_LIB) -o $(TARGET)
 
 test:
 	@echo "Not implemented yet..."

@@ -2,10 +2,10 @@
 
 #set -x
 
-LANKA=1
+LANKA=0
 
 if [ $LANKA -eq 0 ]; then
-	TIRAMISU_ROOT=/Users/b/Documents/src/MIT/tiramisu/
+	TIRAMISU_ROOT=/home/ubuntu/tiramisu/
 	MKL_FLAGS="-lcblas"
 	MKL_LIB_PATH_SUFFIX=
 	LANKA_OPTIONS=
@@ -36,9 +36,9 @@ fi
 
 KERNEL_FOLDER=$1
 KERNEL=$2
-source ${TIRAMISU_ROOT}/configure_paths.sh
+eval `cmake -DSCRIPT_MODE=1 -P ${TIRAMISU_ROOT}/configure.cmake 2>&1 | sed -e 's/^/export /'`
 
-CXXFLAGS="-std=c++11 -O3 -fopenmp"
+CXXFLAGS="-std=c++11 -O3 -fopenmp -fno-rtti"
 
 # Compile options
 # - Make g++ dump generated assembly
@@ -55,8 +55,13 @@ CXXFLAGS="-std=c++11 -O3 -fopenmp"
 
 
 INCLUDES="-I${MKL_PREFIX}/include/ -I${TIRAMISU_ROOT}/include/ -I${TIRAMISU_ROOT}/${HALIDE_SOURCE_DIRECTORY}/include/ -I${TIRAMISU_ROOT}/${ISL_INCLUDE_DIRECTORY} -I${TIRAMISU_ROOT}/benchmarks/"
-LIBRARIES="-ltiramisu ${MKL_FLAGS} -lHalide -lisl -lz -lpthread"
+LIBRARIES="-ltiramisu ${MKL_FLAGS} -lHalide -lisl -lz -lpthread -ldl"
 LIBRARIES_DIR="-L${MKL_PREFIX}/lib/${MKL_LIB_PATH_SUFFIX} -L${TIRAMISU_ROOT}/$HALIDE_LIB_DIRECTORY -L${TIRAMISU_ROOT}/${ISL_LIB_DIRECTORY} -L${TIRAMISU_ROOT}/build/"
+
+if [ ${USE_GPU} == "true" ]; then
+    LIBRARIES="${LIBRARIES} -lcudart -lcuda_wrapper"
+    LIBRARIES_DIR="${LIBRARIES_DIR} -L/usr/local/cuda-9.1/lib64/"
+fi
 
 echo "Compiling ${KERNEL}"
 
@@ -70,6 +75,7 @@ rm -rf ${KERNEL}_generator ${KERNEL}_wrapper generated_${KERNEL}.o generated_${K
 #HL_DEBUG_CODEGEN=1 LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${HALIDE_LIB_DIRECTORY}:${ISL_LIB_DIRECTORY}:${TIRAMISU_ROOT}/build/ DYLD_LIBRARY_PATH=${DYLD_LIBRARY_PATH}:${HALIDE_LIB_DIRECTORY}:${TIRAMISU_ROOT}/build/ ./${KERNEL}_generator_halide
 
 
+echo g++ ${LANKA_OPTIONS} $CXXFLAGS ${INCLUDES} ${DEFINED_SIZE} ${KERNEL}_generator.cpp ${LIBRARIES_DIR} ${LIBRARIES}                       -o ${KERNEL}_generator
 g++ ${LANKA_OPTIONS} $CXXFLAGS ${INCLUDES} ${DEFINED_SIZE} ${KERNEL}_generator.cpp ${LIBRARIES_DIR} ${LIBRARIES}                       -o ${KERNEL}_generator
 #&>> log
 echo "Running ${KERNEL} generator (Tiramisu)"
@@ -80,8 +86,12 @@ if [ $? -ne 0 ]; then
 	exit
 fi
 
+if [ -f generated_${KERNEL}.o_gpu.o ]; then
+    EXTRA_OBJS="generated_${KERNEL}.o_gpu.o generated_${KERNEL}.o_cpu.o"
+fi
+
 echo "Compiling ${KERNEL} wrapper"
-g++ ${LANKA_OPTIONS} $CXXFLAGS ${INCLUDES} ${DEFINED_SIZE} ${KERNEL}_wrapper.cpp   ${LIBRARIES_DIR} ${LIBRARIES} generated_${KERNEL}.o ${LIBRARIES} -o ${KERNEL}_wrapper
+g++ ${LANKA_OPTIONS} $CXXFLAGS ${INCLUDES} ${DEFINED_SIZE} ${KERNEL}_wrapper.cpp   ${LIBRARIES_DIR} ${LIBRARIES} ${EXTRA_OBJS} generated_${KERNEL}.o ${LIBRARIES} -o ${KERNEL}_wrapper
 #&>> log
 echo "Running ${KERNEL} wrapper"
 for ((i=0; i<1; i++)); do
