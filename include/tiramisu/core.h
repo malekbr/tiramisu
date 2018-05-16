@@ -1036,11 +1036,6 @@ protected:
     bool get_auto_allocate();
 
     /**
-      * Set whether the buffer should be allocated automatically.
-      */
-    void set_auto_allocate(bool auto_allocation);
-
-    /**
      * Set the size of a dimension of the buffer.
      */
     void set_dim_size(int dim, int size);
@@ -1191,6 +1186,11 @@ public:
     const std::vector<tiramisu::expr> &get_dim_sizes() const;
 
     /**
+      * Set whether the buffer should be allocated automatically.
+      */
+    void set_auto_allocate(bool auto_allocation);
+
+    /**
      * Return true if all extents of the buffer are literal integer
      * contants (e.g., 4, 10, 100, ...).
      */
@@ -1214,6 +1214,8 @@ public:
     void tag_gpu_register();
     /* Tag the buffer as located in the GPU shared memory. */
     void tag_gpu_shared();
+    /* Tag the buffer as located in the GPU constant memory. */
+    void tag_gpu_constant();
 
 };
 
@@ -1719,11 +1721,6 @@ private:
       * computation alone. i.e., it is not defined in other computations.
       */
     const std::vector<std::pair<std::string, tiramisu::expr>> &get_associated_let_stmts() const;
-
-    /**
-      * Get the data type of the computation.
-      */
-    tiramisu::primitive_t get_data_type() const;
 
     /**
      * Get the name of dynamic dimension that corresponds to the
@@ -3006,6 +3003,11 @@ public:
     void drop_rank_iter();
 
     /**
+      * Get the data type of the computation.
+      */
+    tiramisu::primitive_t get_data_type() const;
+
+    /**
       * Return the Tiramisu expression associated with the computation.
       */
     const tiramisu::expr &get_expr() const;
@@ -3740,6 +3742,7 @@ class generator
     friend function;
     friend computation;
     friend buffer;
+    friend cuda_ast::generator;
 
 protected:
 
@@ -3842,6 +3845,7 @@ protected:
     static Halide::Internal::Stmt make_buffer_alloc(buffer *b, const std::vector<Halide::Expr> &extents,
                                                     Halide::Internal::Stmt &stmt);
     static Halide::Internal::Stmt make_buffer_free(buffer *b);
+    static Halide::Internal::Stmt make_gpu_memcpy(const function *fct, buffer *from, buffer *to);
 
     /**
      * Create a Halide expression from a  Tiramisu expression.

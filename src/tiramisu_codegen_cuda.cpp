@@ -29,6 +29,8 @@
 #include <memory>
 
 namespace tiramisu {
+    tiramisu::expr replace_original_indices_with_transformed_indices(tiramisu::expr exp,
+                                                                     std::map<std::string, isl_ast_expr *> iterators_map);
 namespace cuda_ast {
     // TODO expose as an option
     const std::string arch = "sm_37";
@@ -297,6 +299,7 @@ cuda_ast::statement_ptr tiramisu::cuda_ast::generator::cuda_stmt_from_isl_node(i
                     condition_statement,
                     incrementor_statement,
                     body_statement}};
+            iterator_to_kernel_map[iterator_name].push_back(kernel_ptr{});
         }
 
 
@@ -426,6 +429,7 @@ cuda_ast::statement_ptr tiramisu::cuda_ast::generator::cuda_stmt_from_isl_node(i
                 }
             }
         }
+        assert(false);
     }
 
     cuda_ast::buffer_ptr tiramisu::cuda_ast::generator::get_buffer(const std::string &name) {
@@ -552,7 +556,6 @@ cuda_ast::statement_ptr tiramisu::cuda_ast::generator::cuda_stmt_from_isl_node(i
                         }
                     }
                 }
-                std::cerr << "added to gpu " << this->gpu_iterators.size() << " iterators " << std::endl;
                 for (auto &it : gpu_conditions) {
                     auto used_scalars = it->extract_scalars();
                     for (auto &scalar: used_scalars) {
@@ -583,31 +586,61 @@ cuda_ast::statement_ptr tiramisu::cuda_ast::generator::cuda_stmt_from_isl_node(i
             {
                 auto buffer = get_buffer(comp->get_expr().get_name());
                 return statement_ptr {new cuda_ast::free{buffer}};
-            }
-
-
-            auto &associated_lets = comp->get_associated_let_stmts();
-            if (index_exprs.find(comp) == index_exprs.end())
-                index_exprs[comp] = comp->index_expr;
-            auto result = comp->create_tiramisu_assignment(index_exprs[comp]);
-            cuda_ast::buffer_ptr b = this->get_buffer(result.first.get_name());
-            auto ba = statement_ptr{new buffer_assignment{b, parse_tiramisu(result.first.get_access()[0]),
-                                                          parse_tiramisu(result.second)}};
-            if (associated_lets.empty()) {
-                return ba;
             } else {
-                auto *block_result = new cuda_ast::block;
-                for (auto &stmt: associated_lets) {
-                    block_result->add_statement(
-                            statement_ptr{new declaration{
-                                    assignment_ptr{new scalar_assignment{
-                                            scalar_ptr{new scalar{stmt.second.get_data_type(), stmt.first,
-                                                                  memory_location::reg}},
-                                            parse_tiramisu(stmt.second)}}}});
-
+                auto &associated_lets = comp->get_associated_let_stmts();
+                for (auto &statement: associated_lets)
+                {
+                    this->m_scalar_data.insert(std::make_pair(statement.first, std::make_pair(statement.second.get_data_type(), memory_location::reg)));
+                    if (in_kernel)
+                        gpu_local.insert(statement.first);
                 }
-                block_result->add_statement(ba);
-                return statement_ptr {block_result};
+                if (index_exprs.find(comp) == index_exprs.end())
+                    index_exprs[comp] = comp->index_expr;
+                auto result = comp->create_tiramisu_assignment(index_exprs[comp]);
+                statement_ptr asgmnt;
+                if (result.first.get_expr_type() == e_var)
+                {
+                    cuda_ast::scalar_ptr s = scalar_ptr{new scalar{result.first.get_data_type(), result.first.get_name(), memory_location::reg, true}};
+                    // TODO associated let statement doesn't work well with declaration
+                    asgmnt = statement_ptr{new declaration{assignment_ptr{new scalar_assignment{s, parse_tiramisu(result.second)}}}};
+                    // TODO remove once done
+                    m_scalar_data.insert(std::make_pair(result.first.get_name(), std::make_pair(result.first.get_data_type(), memory_location::reg)));
+                    gpu_local.insert(result.first.get_name());
+                }
+                else
+                {
+                    cuda_ast::buffer_ptr b = this->get_buffer(result.first.get_name());
+                    asgmnt = statement_ptr{new buffer_assignment{b, parse_tiramisu(result.first.get_access()[0]),
+                                                                  parse_tiramisu(result.second)}};
+                }
+                if (comp->get_predicate().is_defined()) {
+
+                    std::vector<isl_ast_expr *> ie = {}; // Dummy variable.
+                    tiramisu::expr tiramisu_predicate = replace_original_indices_with_transformed_indices(
+                            comp->get_predicate(),
+                            comp->get_iterators_map());
+                    asgmnt = statement_ptr{new if_condition{parse_tiramisu(tiramisu_predicate), asgmnt}};
+                }
+                if (associated_lets.empty()) {
+                    return asgmnt;
+                } else {
+                    auto *block_result = new cuda_ast::block;
+                    for (auto &stmt: associated_lets) {
+                        auto associated_expr = replace_original_indices_with_transformed_indices(stmt.second, comp->get_iterators_map());
+                        std::vector<isl_ast_expr *> ie;
+                        associated_expr = tiramisu::generator::replace_accesses(&this->m_fct, ie, associated_expr);
+                        block_result->add_statement(
+                                statement_ptr{new declaration{
+                                        assignment_ptr{new scalar_assignment{
+                                                scalar_ptr{new scalar{stmt.second.get_data_type(), stmt.first,
+                                                                      memory_location::reg, true}},
+                                                parse_tiramisu(associated_expr)}}}});
+                        m_scalar_data.erase(stmt.first);
+
+                    }
+                    block_result->add_statement(asgmnt);
+                    return statement_ptr{block_result};
+                }
             }
         } else {
 //            auto it = isl_operation_description.find(op_type);
@@ -670,12 +703,13 @@ cuda_ast::statement_ptr tiramisu::cuda_ast::generator::cuda_stmt_from_isl_node(i
             std::vector<isl_ast_expr*> ie{};
             auto rhs = generator.parse_tiramisu(generator::replace_accesses(this, ie, invariant.get_expr()));
             auto scalar = cuda_ast::scalar_ptr{
-                    new cuda_ast::scalar{rhs->get_type(), invariant.get_name(), cuda_ast::memory_location::constant, true}};
+                    new cuda_ast::scalar{rhs->get_type(), invariant.get_name(), cuda_ast::memory_location::reg, true}};
             function_body->add_statement(
                     cuda_ast::statement_ptr{new cuda_ast::declaration{
                             cuda_ast::assignment_ptr{new cuda_ast::scalar_assignment{scalar, rhs}}}});
         }
         std::vector<cuda_ast::statement_ptr> allocations;
+        std::vector<cuda_ast::statement_ptr> const_buffer_declaration;
         std::vector<cuda_ast::statement_ptr> frees;
         for (const auto &b : this->get_buffers()) {
             tiramisu::buffer *buf = b.second;
@@ -686,11 +720,22 @@ cuda_ast::statement_ptr tiramisu::cuda_ast::generator::cuda_stmt_from_isl_node(i
                 cuda_ast::statement_ptr declaration{new cuda_ast::declaration{cuda_ast_buffer}};
                 body->add_statement(declaration);
 
-                allocations.push_back(cuda_ast::statement_ptr{new cuda_ast::allocate(cuda_ast_buffer)});
-                frees.push_back(cuda_ast::statement_ptr{new cuda_ast::free(cuda_ast_buffer)});
+                if (buf->location != cuda_ast::memory_location::constant) {
+                    allocations.push_back(cuda_ast::statement_ptr{new cuda_ast::allocate(cuda_ast_buffer)});
+                    frees.push_back(cuda_ast::statement_ptr{new cuda_ast::free(cuda_ast_buffer)});
+                }
 
 
                 buf->mark_as_allocated();
+
+                if (buf->location == cuda_ast::memory_location::constant)
+                {
+                    const_buffer_declaration.push_back(declaration);
+                    auto hf = new cuda_ast::host_function{p_none, buf->get_name() + "_get_symbol", {},
+                                            cuda_ast::statement_ptr{new cuda_ast::return_statement{std::static_pointer_cast<cuda_ast::statement>(cuda_ast_buffer)}}};
+                    hf->set_pointer_return();
+                    const_buffer_declaration.push_back(cuda_ast::statement_ptr{hf});
+                }
             }
         }
         for (auto &a : allocations)
@@ -707,6 +752,9 @@ cuda_ast::statement_ptr tiramisu::cuda_ast::generator::cuda_stmt_from_isl_node(i
         delete body;
 
         std::shared_ptr<cuda_ast::block> resulting_file{new cuda_ast::block};
+
+        for (auto &s: const_buffer_declaration)
+            resulting_file->add_statement(s);
 
 
         for (auto &kernel: generator.kernels)
@@ -743,7 +791,7 @@ cuda_ast::statement_ptr tiramisu::cuda_ast::generator::cuda_stmt_from_isl_node(i
         for (const tiramisu::constant &invariant : fct.get_invariants()) {
             m_scalar_data.insert(std::make_pair(invariant.get_name(),
                                                 std::make_pair(invariant.get_data_type(),
-                                                               cuda_ast::memory_location::constant)));
+                                                               cuda_ast::memory_location::reg)));
         }
     }
 
@@ -914,34 +962,34 @@ cuda_ast::statement_ptr tiramisu::cuda_ast::generator::cuda_stmt_from_isl_node(i
         switch (get_type())
         {
             case p_uint8:
-            ss << u8_val;
+            ss << +u8_val;
                 break;
             case p_int8:
-                ss << i8_val;
+                ss << +i8_val;
                 break;
             case p_uint16:
-                ss << u16_val;
+                ss << +u16_val;
                 break;
             case p_int16:
-                ss << i16_val;
+                ss << +i16_val;
                 break;
             case p_uint32:
-                ss << u32_val;
+                ss << +u32_val;
                 break;
             case p_int32:
-                ss << i32_val;
+                ss << +i32_val;
                 break;
             case p_uint64:
-                ss << u64_val;
+                ss << +u64_val;
                 break;
             case p_int64:
-                ss << i64_val;
+                ss << +i64_val;
                 break;
             case p_float32:
-                ss << f32_val;
+                ss << +f32_val;
                 break;
             case p_float64:
-                ss << f64_val;
+                ss << +f64_val;
                 break;
             default:
                 assert(!"Value type not supported.");
@@ -1051,6 +1099,9 @@ cuda_ast::statement_ptr tiramisu::cuda_ast::generator::cuda_stmt_from_isl_node(i
             switch (id->get_location()) {
                 case cuda_ast::memory_location::shared:
                     ss << "__shared__ ";
+                    break;
+                case cuda_ast::memory_location::constant:
+                    ss << "__constant__ ";
                     break;
                 default:
                     break;
@@ -1197,7 +1248,7 @@ cuda_ast::statement_ptr tiramisu::cuda_ast::generator::cuda_stmt_from_isl_node(i
 
 
     void cuda_ast::kernel_definition::print(std::stringstream &ss, const std::string &base) {
-        ss << "__global__ void " << kernel->get_name() << "(";
+        ss << "static __global__ void " << kernel->get_name() << "(";
         auto arguments = kernel->get_arguments();
         for (auto it = arguments.begin(); it != arguments.end();)
         {
@@ -1248,7 +1299,7 @@ cuda_ast::statement_ptr tiramisu::cuda_ast::generator::cuda_stmt_from_isl_node(i
         used_constants[scalar->get_name()] = scalar;
     }
     void cuda_ast::kernel::add_used_buffer(buffer_ptr buffer) {
-        if (buffer->get_location() != memory_location::shared)
+        if (buffer->get_location() != memory_location::shared && buffer->get_location() != memory_location::constant)
             used_buffers[buffer->get_name()] = buffer;
     }
 
@@ -1256,7 +1307,10 @@ cuda_ast::statement_ptr tiramisu::cuda_ast::generator::cuda_stmt_from_isl_node(i
             statement(type), name(name), body(body), arguments(arguments){}
 
     void cuda_ast::host_function::print(std::stringstream &ss, const std::string &base) {
-        ss << "extern \"C\" " << tiramisu_type_to_cuda_type(this->get_type()) << " " << name << "(";
+        ss << "extern \"C\" " << tiramisu_type_to_cuda_type(this->get_type());
+        if (pointer_return)
+            ss << "*";
+        ss << " " << name << "(";
         for (int i = 0; i < arguments.size();)
         {
             arguments[i]->print_declaration(ss, base);
@@ -1521,18 +1575,21 @@ cuda_ast::statement_ptr tiramisu::cuda_ast::generator::cuda_stmt_from_isl_node(i
             scalar_ptr used_scalar{new cuda_ast::scalar{data.first, name, data.second}};
             if (this->in_kernel)
             {
-                bool defined_inside = false;
                 // Check if it was defined inside
-                for (auto it = iterator_stack.rbegin(); it != iterator_stack.rend(); it++)
+                bool defined_inside = gpu_local.find(name) != gpu_local.end();
+                if (!defined_inside)
                 {
-                    if (name == *it)
+                    for (auto it = iterator_stack.rbegin(); it != iterator_stack.rend(); it++)
                     {
-                        defined_inside = true;
-                        break;
-                    }
-                    if (gpu_iterators.find(name) != gpu_iterators.end())
-                    {
-                        break;
+                        if (name == *it)
+                        {
+                            defined_inside = true;
+                            break;
+                        }
+                        if (gpu_iterators.find(name) != gpu_iterators.end())
+                        {
+                            break;
+                        }
                     }
                 }
                 if (!defined_inside)
@@ -1637,6 +1694,8 @@ cuda_ast::statement_ptr tiramisu::cuda_ast::generator::cuda_stmt_from_isl_node(i
         // Specify the device architecture
         command << " -arch=" << arch;
         // Say that this is actually cuda code
+        command << " -Xptxas -O3";
+        // Say that this is actually cuda code
         command << " -x cu";
         // Create a .o file
         command << " -c";
@@ -1698,18 +1757,20 @@ cuda_ast::statement_ptr tiramisu::cuda_ast::generator::cuda_stmt_from_isl_node(i
         cout << cwd << endl;
         ofstream code_file;
         string filename = obj_name + ".cu";
-        code_file.open(filename, fstream::out | fstream::trunc);
-        if (code_file.fail()) {
-            tiramisu::error("Failed to open file " + filename + " for writing. Cannot compile GPU code.", false);
-            return false;
-        }
-        DEBUG(3, cout << "Opened file " << filename << " for writing.");
-        code_file << "#include <stdint.h>\n";
-        code_file << code;
-        code_file.flush();
-        if (code_file.fail()) {
-            tiramisu::error("Failed to write to file " + filename + ". Cannot compile GPU code.", false);
-            return false;
+        if (!getenv("CUDA_NO_OVERWRITE")) {
+            code_file.open(filename, fstream::out | fstream::trunc);
+            if (code_file.fail()) {
+                tiramisu::error("Failed to open file " + filename + " for writing. Cannot compile GPU code.", false);
+                return false;
+            }
+            DEBUG(3, cout << "Opened file " << filename << " for writing.");
+            code_file << "#include <stdint.h>\n";
+            code_file << code;
+            code_file.flush();
+            if (code_file.fail()) {
+                tiramisu::error("Failed to write to file " + filename + ". Cannot compile GPU code.", false);
+                return false;
+            }
         }
 
         DEBUG_INDENT(-4);
@@ -1730,6 +1791,10 @@ cuda_ast::statement_ptr tiramisu::cuda_ast::generator::cuda_stmt_from_isl_node(i
     void cuda_ast::return_statement::print(std::stringstream &ss, const std::string &base) {
         ss << "return ";
         return_value->print(ss, base);
+    }
+
+    void cuda_ast::host_function::set_pointer_return(bool val) {
+        pointer_return = val;
     }
 
 };
