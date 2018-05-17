@@ -394,7 +394,8 @@ cuda_ast::statement_ptr tiramisu::cuda_ast::generator::cuda_stmt_from_isl_node(i
                     default: {
 //                        auto it = cuda_ast::tiramisu_operation_description(tiramisu_expr.get_op_type());
 //                        assert(it != cuda_ast::tiramisu_operation_description.cend());
-                        const op_data_t &op_data = cuda_ast::tiramisu_operation_description(tiramisu_expr.get_op_type());//it->second;
+                        auto op_type = tiramisu_expr.get_op_type();
+                        const op_data_t &op_data = cuda_ast::tiramisu_operation_description(op_type);//it->second;
                         std::vector<statement_ptr> operands;
                         for (int i = 0; i < op_data.arity; i++) {
                             operands.push_back(parse_tiramisu(tiramisu_expr.get_operand(i)));
@@ -408,6 +409,11 @@ cuda_ast::statement_ptr tiramisu::cuda_ast::generator::cuda_stmt_from_isl_node(i
                                             new cuda_ast::unary{tiramisu_expr.get_data_type(), operands[0],
                                                                 std::string{op_data.symbol}}};
                                 case 2:
+                                if (operands[0]->is_absorbing(op_type) || operands[1]->is_identity(op_type))
+                                    return operands[0];
+                                else if (operands[1]->is_absorbing(op_type) || operands[0]->is_identity(op_type))
+                                    return operands[1];
+                                else
                                     return statement_ptr {
                                             new cuda_ast::binary{tiramisu_expr.get_data_type(), operands[0],
                                                                  operands[1], std::string{op_data.symbol}}};
@@ -660,7 +666,12 @@ cuda_ast::statement_ptr tiramisu::cuda_ast::generator::cuda_stmt_from_isl_node(i
                     case 1:
                         return statement_ptr{new cuda_ast::unary{type, operands[0], std::string(description.symbol)}};
                     case 2:
-                        return statement_ptr{
+                        if (operands[0]->is_absorbing(op_type) || operands[1]->is_identity(op_type))
+                            return operands[0];
+                        else if (operands[1]->is_absorbing(op_type) || operands[0]->is_identity(op_type))
+                            return operands[1];
+                        else
+                            return statement_ptr{
                                 new cuda_ast::binary{type, operands[0], operands[1], std::string(description.symbol)}};
                     case 3:
                         return statement_ptr{new cuda_ast::ternary{type, operands[0], operands[1], operands[2],
@@ -962,7 +973,7 @@ cuda_ast::statement_ptr tiramisu::cuda_ast::generator::cuda_stmt_from_isl_node(i
         switch (get_type())
         {
             case p_uint8:
-            ss << +u8_val;
+                ss << +u8_val;
                 break;
             case p_int8:
                 ss << +i8_val;
@@ -991,6 +1002,99 @@ cuda_ast::statement_ptr tiramisu::cuda_ast::generator::cuda_stmt_from_isl_node(i
             case p_float64:
                 ss << +f64_val;
                 break;
+            default:
+                assert(!"Value type not supported.");
+        }
+    }
+
+    bool cuda_ast::statement::is_identity(tiramisu::op_t op) {
+        return false;
+    }
+    bool cuda_ast::statement::is_absorbing(tiramisu::op_t op) {
+        return false;
+    }
+    bool cuda_ast::statement::is_identity(isl_ast_op_type op) {
+        return false;
+    }
+    bool cuda_ast::statement::is_absorbing(isl_ast_op_type op) {
+        return false;
+    }
+
+    bool cuda_ast::value::is_identity(tiramisu::op_t op) {
+        if (op == o_add || op == o_sub)
+            return is_zero();
+        if (op == o_mul || op == o_div)
+            return is_one();
+        return false;
+    }
+
+    bool cuda_ast::value::is_absorbing(tiramisu::op_t op) {
+        if (op == o_mul || op == o_div)
+            return is_zero();
+        return false;
+    }
+    bool cuda_ast::value::is_identity(isl_ast_op_type op) {
+        if (op == isl_ast_op_add || op == isl_ast_op_sub)
+            return is_zero();
+        if (op == isl_ast_op_mul || op == isl_ast_op_div || op == isl_ast_op_pdiv_q || op == isl_ast_op_fdiv_q)
+            return is_one();
+        return false;
+    }
+    bool cuda_ast::value::is_absorbing(isl_ast_op_type op) {
+        if (op == isl_ast_op_mul || op == isl_ast_op_div || op == isl_ast_op_pdiv_q || op == isl_ast_op_fdiv_q)
+            return is_zero();
+        return false;
+    }
+    bool cuda_ast::value::is_one() const {
+        switch (get_type())
+        {
+            case p_uint8:
+                return u8_val == 1;
+            case p_int8:
+                return i8_val == 1;
+            case p_uint16:
+                return u16_val == 1;
+            case p_int16:
+                return i16_val == 1;
+            case p_uint32:
+                return u32_val == 1;
+            case p_int32:
+                return i32_val == 1;
+            case p_uint64:
+                return u64_val == 1;
+            case p_int64:
+                return i64_val == 1;
+            case p_float32:
+                return f32_val == 1.;
+            case p_float64:
+                return f64_val == 1.;
+            default:
+                assert(!"Value type not supported.");
+        }
+    }
+    bool cuda_ast::value::is_zero() const {
+        switch (get_type())
+        {
+            case p_uint8:
+                return u8_val == 0;
+            case p_int8:
+                return i8_val == 0;
+            case p_uint16:
+                return u16_val == 0;
+            case p_int16:
+                return i16_val == 0;
+            case p_uint32:
+                return u32_val == 0;
+            case p_int32:
+                return i32_val == 0;
+            case p_uint64:
+                return u64_val == 0;
+            case p_int64:
+                return i64_val == 0;
+            case p_float32:
+                return f32_val == 0.;
+            case p_float64:
+                return f64_val == 0.;
             default:
                 assert(!"Value type not supported.");
         }

@@ -1133,6 +1133,23 @@ void function::gen_isl_ast()
                                 isl_union_map_to_str(umap)));
     DEBUG(3, tiramisu::str_dump("\n"));
 
+    {
+        const char name[] = "atomic";
+        isl_space *space;
+        isl_union_set *domain, *target;
+        isl_union_map *option;
+
+        space = isl_space_set_alloc(ctx, 0, 1);
+        space = isl_space_set_tuple_name(space, isl_dim_set, name);
+        target = isl_union_set_from_set(isl_set_universe(space));
+
+        domain = isl_union_map_range(isl_union_map_copy(umap));
+        domain = isl_union_set_universe(domain);
+        option = isl_union_map_from_domain_and_range(domain, target);
+        std::cout << isl_union_map_to_str(option) << std::endl;
+        ast_build = isl_ast_build_set_options(ast_build, option);
+    }
+
     this->ast = isl_ast_build_node_from_schedule_map(ast_build, umap);
 
     isl_ast_build_free(ast_build);

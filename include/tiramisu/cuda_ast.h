@@ -198,6 +198,10 @@ public:
     // TODO implement in more subclasses
     virtual statement_ptr replace_iterators(std::unordered_map<std::string, gpu_iterator> & iterators);
     virtual std::unordered_set<std::string> extract_scalars();
+    virtual bool is_identity(tiramisu::op_t op);
+    virtual bool is_identity(isl_ast_op_type op);
+    virtual bool is_absorbing(tiramisu::op_t op);
+    virtual bool is_absorbing(isl_ast_op_type op);
 
 protected:
 
@@ -309,6 +313,10 @@ public:
 public:
     void print(std::stringstream &ss, const std::string &base) override;
     statement_ptr replace_iterators(std::unordered_map<std::string, gpu_iterator> & iterators) override;
+    bool is_identity(tiramisu::op_t op) override;
+    bool is_identity(isl_ast_op_type op) override;
+    bool is_absorbing(tiramisu::op_t op) override;
+    bool is_absorbing(isl_ast_op_type op) override;
 
 private:
 
@@ -328,6 +336,8 @@ private:
         float       f32_val;
         double      f64_val;
     };
+    bool is_zero() const;
+    bool is_one() const;
 };
 
 class assignment : public statement

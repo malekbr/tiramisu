@@ -2620,6 +2620,7 @@ tiramisu::expr generator::linearize_access(int dims, std::vector<tiramisu::expr>
 
 std::string generator::get_buffer_name(const tiramisu::computation * comp)
 {
+    DEBUG(3, tiramisu::str_dump("Getting buffer name for computation : ", comp->get_name().c_str()));
     isl_map *access = comp->get_access_relation_adapted_to_time_processor_domain();
     isl_space *space = isl_map_get_space(access);
     const char *buffer_name = isl_space_get_tuple_name(space, isl_dim_out);
